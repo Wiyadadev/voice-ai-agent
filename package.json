@@ -1,0 +1,22 @@
+{
+  "name": "voice-ai-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ngrok": "^5.0.0-beta.2",
+    "node-fetch": "^2.7.0",
+    "openai": "^6.45.0",
+    "twilio": "^6.0.2",
+    "ws": "^8.21.0"
+  }
+}
