@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VYADA · Real Estate Voice Agent</title><link rel="stylesheet" href="/style.css"></head><body>
+<header><b>VYADA</b><span>REAL ESTATE VOICE AGENT</span><small>SANDBOX / FICTIONAL CALLS ONLY</small></header>
+<main><section><p class="eyebrow">A GOOD HOME STARTS WITH A CONVERSATION</p><h1>Let’s hear what<br>home means to you.</h1><p>Try an inbound English call. Speak or type as a fictional customer, then review the lead summary.</p>
+<div class="controls"><button id="start">Start sandbox call</button><button id="end" disabled>End & summarize</button></div>
+<label><input type="checkbox" id="speak"> Read replies aloud</label>
+<p class="note">Microphone recognition depends on your browser and may use its online speech service. Text mode works without it. Demo mode uses a simple guided parser; enable the LLM in configuration for free-form conversations.</p>
+<div id="messages" role="log" aria-live="polite"></div><form id="form"><label for="text">Your reply</label><textarea id="text" placeholder="I’m looking to rent…" maxlength="2000" disabled></textarea><div class="controls"><button id="send" disabled>Send reply</button><button type="button" id="mic" disabled>Use microphone</button></div></form><p id="status" role="status"></p></section>
+<aside><h2>What we’ve learned</h2><p>Caller statements only. Unknown details stay missing.</p><dl id="lead"></dl><h2>After the call</h2><pre id="summary">Your summary will appear here.</pre></aside></main><script type="module" src="/app.js"></script></body></html>

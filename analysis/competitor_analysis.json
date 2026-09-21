@@ -1,0 +1,71 @@
+{
+  "executive_summary": "The analysis of 40 calls with an AI agent named Dmitry reveals a structured approach to recruiting candidates for military contracts with the Ministry of Defense. The agent effectively gathers personal information and addresses customer concerns, but struggles with objection handling and maintaining a natural conversational flow. Key areas for improvement include enhancing empathy in responses, reducing reliance on scripted interactions, and improving speech recognition capabilities.",
+  "recurring_opening_patterns": [
+    "The agent introduces himself and the purpose of the call, emphasizing the benefits of the contract.",
+    "The agent asks about the customer's interest in maximum payments or safe service options."
+  ],
+  "recurring_conversation_flows": [
+    "Introduction of the agent and purpose of the call.",
+    "Inquiry about customer preferences regarding service options.",
+    "Gathering personal information (name, age, region, military status, health status, criminal record).",
+    "Presentation of contract benefits.",
+    "Addressing customer objections and scheduling a follow-up with a curator."
+  ],
+  "common_questions": [
+    "Как вас зовут?",
+    "Сколько вам полных лет?",
+    "Какой у вас воинское звание?",
+    "Какая категория годности указана в военном билете?",
+    "Есть ли у вас хронические заболевания или инвалидность?",
+    "Есть ли у вас непогашенная судимость?"
+  ],
+  "common_customer_intents": [
+    "To explore military service options and understand contract details.",
+    "To assess eligibility for military contracts based on personal circumstances."
+  ],
+  "common_objections": [
+    "Не готов подписать контракт.",
+    "У меня уже есть договоренности с военкоматом.",
+    "Мне нужно подумать."
+  ],
+  "objection_handling_patterns": [
+    "The agent acknowledges customer objections and seeks clarification.",
+    "The agent reassures customers about the legitimacy of the organization and the support provided."
+  ],
+  "qualification_patterns": [
+    "The agent collects detailed personal and military information to assess eligibility.",
+    "The agent verifies health status and legal background to determine suitability."
+  ],
+  "closing_patterns": [
+    "The agent thanks the customer for their time and confirms that a curator will follow up.",
+    "The agent summarizes the conversation and outlines the next steps."
+  ],
+  "agent_strengths": [
+    "Polite and professional tone.",
+    "Effective at gathering necessary information.",
+    "Clear presentation of benefits associated with the contract."
+  ],
+  "agent_weaknesses": [
+    "Struggles with handling objections effectively.",
+    "Relies heavily on scripted questions, which may limit natural interaction.",
+    "Speech recognition errors can lead to misunderstandings."
+  ],
+  "naturalness_patterns": [
+    "The conversation flows naturally at times, but can feel scripted.",
+    "Agents maintain a professional tone but could benefit from more conversational engagement."
+  ],
+  "failure_patterns": [
+    "Inability to address customer objections in a personalized manner.",
+    "Repetitive questioning that may frustrate customers."
+  ],
+  "most_important_findings": [
+    "The agent's structured approach is effective for information gathering but lacks flexibility.",
+    "Customer engagement is often hindered by scripted responses and technical issues."
+  ],
+  "recommended_improvements": [
+    "Incorporate more adaptive questioning techniques to enhance natural conversation flow.",
+    "Implement better handling of technical issues to minimize disruptions during calls.",
+    "Enhance empathy in responses to build rapport and trust with customers.",
+    "Improve speech recognition capabilities to reduce misunderstandings."
+  ]
+}

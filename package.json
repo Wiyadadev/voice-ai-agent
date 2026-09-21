@@ -1,14 +1,20 @@
 {
   "name": "voice-ai-agent",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Russian Twilio voice AI agent with Deepgram, OpenAI, ElevenLabs and Telegram summaries",
+  "main": "twilio-server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node twilio-server.js",
+    "start:production": "node twilio-server.js",
+    "check": "node --check twilio-server.js && node --check agent-brain.js",
+    "test": "npm run check"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.4.2",
@@ -17,6 +23,6 @@
     "node-fetch": "^2.7.0",
     "openai": "^6.45.0",
     "twilio": "^6.0.2",
-    "ws": "^8.21.0"
+    "ws": "^8.21.1"
   }
 }
