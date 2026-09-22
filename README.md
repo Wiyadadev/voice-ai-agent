@@ -1,61 +1,61 @@
-# Thai/Russian Voice AI Agent
+# ตัวแทนสนทนาด้วยเสียง (Voice AI Agent) ภาษาไทย/รัสเซีย
 
-A production-oriented Thai/Russian telephone voice agent built around Twilio Media Streams. It recognizes Thai and Russian speech with Deepgram, generates concise replies in the caller's current language with OpenAI, synthesizes phone audio with ElevenLabs, and sends an after-call summary plus Thai translation to Telegram and an optional webhook.
+ระบบตัวแทนสนทนาทางโทรศัพท์ด้วยเสียงสำหรับใช้งานจริง สร้างขึ้นบน Twilio Media Streams รองรับการรู้จำเสียงพูดภาษาไทยและรัสเซียด้วย Deepgram สร้างคำตอบแบบกระชับในภาษาปัจจุบันของผู้โทรด้วย OpenAI สังเคราะห์เสียงสำหรับโทรศัพท์ด้วย ElevenLabs และส่งสรุปหลังการโทรพร้อมคำแปลภาษาไทยไปยัง Telegram รวมถึง webhook เสริม
 
-## Architecture
+## สถาปัตยกรรมระบบ
 
 ```text
-Twilio call
-  -> POST /voice (TwiML greeting + wss://<host>/media)
+สายเรียกเข้า Twilio
+  -> POST /voice (TwiML คำทักทาย + wss://<host>/media)
   -> WebSocket /media
   -> Deepgram Nova-2 multilingual, mu-law 8 kHz
-  -> Thai/Russian detection per caller utterance
-  -> OpenAI Chat Completions with per-call conversation memory
-  -> ElevenLabs multilingual TTS with a language hint, mu-law 8 kHz
-  -> Twilio audio stream
+  -> ตรวจจับภาษาไทย/รัสเซียต่อประโยคที่ผู้โทรพูด
+  -> OpenAI Chat Completions พร้อมหน่วยความจำบทสนทนาต่อสาย
+  -> ElevenLabs multilingual TTS พร้อมระบุภาษา, mu-law 8 kHz
+  -> ส่งเสียงกลับไปยัง Twilio stream
 
-Call stop/close
-  -> Russian transcript and structured OpenAI summary
-  -> Thai translation
-  -> Telegram message
-  -> optional SUMMARY_WEBHOOK_URL POST
+เมื่อสายจบ/ปิดการเชื่อมต่อ
+  -> บันทึกการสนทนาภาษารัสเซียและสรุปโครงสร้างด้วย OpenAI
+  -> แปลเป็นภาษาไทย
+  -> ส่งข้อความไปยัง Telegram
+  -> POST ไปยัง SUMMARY_WEBHOOK_URL (ถ้ามีการตั้งค่า)
 ```
 
-The production entry point is `twilio-server.js`. `agent-brain.js` loads the conversation rules from `analysis/conversation_logic.json`. Runtime call state is held in memory by Call SID, so a restart clears active conversations and summaries that have not finished.
+จุดเริ่มต้นของระบบสำหรับใช้งานจริงคือ `twilio-server.js` ส่วน `agent-brain.js` จะโหลดกฎการสนทนาจาก `analysis/conversation_logic.json` สถานะการโทรระหว่างการทำงานจะถูกเก็บไว้ในหน่วยความจำตาม Call SID ดังนั้นหากรีสตาร์ทเซิร์ฟเวอร์ บทสนทนาที่กำลังดำเนินอยู่และสรุปที่ยังไม่เสร็จจะหายไป
 
-## Current status
+## สถานะปัจจุบัน
 
-Complete and wired in the production path:
+ส่วนที่เสร็จสมบูรณ์และเชื่อมต่อใช้งานจริงแล้ว:
 
-- Twilio inbound voice webhook and outbound call creation
-- Twilio bidirectional media WebSocket
-- Thai and Russian Deepgram speech recognition
-- Thai/Russian OpenAI conversation with per-call context
-- ElevenLabs phone-compatible mu-law audio
-- Call finalization protection against duplicate `stop`/`close` handling
-- OpenAI call summary and Thai translation
-- Telegram summary delivery
-- Optional summary webhook
-- `/health` endpoint for deployment health checks
-- Configurable `PORT` for hosted platforms
+- Webhook รับสายเข้าของ Twilio และการสร้างสายโทรออก
+- WebSocket สำหรับ media แบบสองทิศทางของ Twilio
+- การรู้จำเสียงพูดภาษาไทยและรัสเซียด้วย Deepgram
+- บทสนทนาภาษาไทย/รัสเซียกับ OpenAI พร้อมบริบทต่อสาย
+- เสียงพูดแบบ mu-law ที่ใช้งานกับโทรศัพท์ได้จาก ElevenLabs
+- การป้องกันการประมวลผล `stop`/`close` ซ้ำซ้อนเมื่อสายจบ
+- การสรุปการโทรและแปลเป็นภาษาไทยด้วย OpenAI
+- การส่งสรุปไปยัง Telegram
+- Webhook สรุปผลเสริม (ไม่บังคับ)
+- Endpoint `/health` สำหรับตรวจสอบสถานะการ deploy
+- ตั้งค่า `PORT` ได้สำหรับแพลตฟอร์ม hosting
 
-The project also contains a separate `vyada-real-estate/` English sandbox with its own package, server, browser UI, and tests. It is not imported by or required for this Twilio agent.
+โปรเจกต์นี้ยังมีโฟลเดอร์ `vyada-real-estate/` ซึ่งเป็น sandbox ภาษาอังกฤษแยกต่างหาก มี package, server, UI และชุดทดสอบของตัวเอง **ไม่ได้ถูก import หรือใช้งานโดยตัวแทนสนทนา Twilio นี้**
 
-## Language detection and switching
+## การตรวจจับและสลับภาษา
 
-Deepgram uses its multilingual streaming mode (`language=multi`) so the audio stream is not locked to Russian. For each final transcript, the server counts Thai characters and Cyrillic characters:
+Deepgram ใช้โหมด multilingual streaming (`language=multi`) เพื่อไม่ให้ audio stream ถูกล็อกไว้ที่ภาษารัสเซียเพียงอย่างเดียว สำหรับแต่ละ final transcript เซิร์ฟเวอร์จะนับตัวอักษรไทยและตัวอักษรซีริลลิก (Cyrillic):
 
-- Thai characters win: the utterance is treated as Thai (`th`).
-- Cyrillic characters win: the utterance is treated as Russian (`ru`).
-- If the transcript has neither script, the previous language for that Call SID is retained.
+- หากตัวอักษรไทยมากกว่า: ถือว่าเป็นภาษาไทย (`th`)
+- หากตัวอักษรซีริลลิกมากกว่า: ถือว่าเป็นภาษารัสเซีย (`ru`)
+- หาก transcript ไม่มีทั้งสองสคริปต์: ใช้ภาษาก่อนหน้าของ Call SID นั้นต่อไป
 
-The detected language is passed to OpenAI as the current reply language and to ElevenLabs as `language_code`. This runs independently for every utterance, so a caller can switch between Thai and Russian during one call. The conversation memory remains shared, preserving context across the switch.
+ภาษาที่ตรวจพบจะถูกส่งไปยัง OpenAI เพื่อกำหนดภาษาที่ใช้ตอบ และส่งไปยัง ElevenLabs เป็น `language_code` กระบวนการนี้ทำงานแยกกันในทุกประโยค ทำให้ผู้โทรสามารถสลับระหว่างภาษาไทยและรัสเซียได้ระหว่างการโทรครั้งเดียว โดยหน่วยความจำบทสนทนายังคงใช้ร่วมกัน รักษาบริบทไว้แม้มีการสลับภาษา
 
-## Required environment variables
+## ตัวแปรสภาพแวดล้อมที่จำเป็น
 
-Set these as local `.env` values or deployment-platform secrets. Never commit `.env` or place secret values in README files.
+ตั้งค่าเป็นไฟล์ `.env` ในเครื่อง หรือเป็น secret ของแพลตฟอร์ม deploy ห้าม commit ไฟล์ `.env` หรือใส่ค่า secret ไว้ใน README
 
-Required by the production server:
+จำเป็นสำหรับเซิร์ฟเวอร์ที่ใช้งานจริง:
 
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
@@ -64,93 +64,93 @@ Required by the production server:
 - `ELEVENLABS_API_KEY`
 - `DEEPGRAM_API_KEY`
 
-Required for outbound calls:
+จำเป็นสำหรับการโทรออก:
 
-- `PUBLIC_URL` - public HTTPS base URL of this application, without a trailing slash
+- `PUBLIC_URL` - URL สาธารณะแบบ HTTPS ของแอปพลิเคชันนี้ (ไม่มี `/` ต่อท้าย)
 
-Required for Telegram summaries:
+จำเป็นสำหรับการส่งสรุปไปยัง Telegram:
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
 
-Optional:
+ไม่บังคับ:
 
 - `SUMMARY_WEBHOOK_URL`
-- `PORT` - supplied by most hosting platforms; defaults to `3000` locally
+- `PORT` - มักถูกกำหนดโดยแพลตฟอร์ม hosting เอง ค่าเริ่มต้นในเครื่องคือ `3000`
 
-`dotenv` reads `.env` in local development. In production, configure environment variables in the hosting provider's secret/environment settings. The application does not print API keys or token fragments.
+`dotenv` จะอ่านไฟล์ `.env` ในการพัฒนาบนเครื่อง ส่วนบน production ให้ตั้งค่าตัวแปรสภาพแวดล้อมในระบบจัดการ secret/environment ของ hosting provider แอปพลิเคชันนี้จะไม่พิมพ์ API key หรือส่วนหนึ่งส่วนใดของ token ออกมา
 
-## Local run
+## การรันในเครื่อง (Local)
 
-Prerequisites: Node.js 18 or newer and a public HTTPS tunnel for real Twilio callbacks.
+ข้อกำหนดเบื้องต้น: Node.js 18 ขึ้นไป และ HTTPS tunnel สาธารณะสำหรับทดสอบ Twilio callback จริง
 
 ```powershell
 npm install
 npm start
 ```
 
-The server listens on `http://0.0.0.0:3000` by default. For local Twilio testing, start ngrok separately and set `PUBLIC_URL` to its HTTPS URL. Configure the Twilio phone number's voice webhook as `POST <PUBLIC_URL>/voice`.
+เซิร์ฟเวอร์จะฟังที่ `http://0.0.0.0:3000` โดยค่าเริ่มต้น สำหรับทดสอบ Twilio ในเครื่อง ให้รัน ngrok แยกต่างหาก แล้วตั้งค่า `PUBLIC_URL` เป็น URL แบบ HTTPS ของ ngrok จากนั้นตั้งค่า voice webhook ของหมายเลขโทรศัพท์ Twilio เป็น `POST <PUBLIC_URL>/voice`
 
-Useful checks:
+คำสั่งตรวจสอบที่มีประโยชน์:
 
 ```powershell
 npm run check
 Invoke-WebRequest http://127.0.0.1:3000/health
 ```
 
-To create an outbound call, send a JSON request to `POST /call` with a `to` phone number. The request uses `PUBLIC_URL/voice` as the TwiML URL.
+สำหรับการสร้างสายโทรออก ให้ส่ง JSON request ไปที่ `POST /call` พร้อมหมายเลขโทรศัพท์ปลายทางในฟิลด์ `to` โดย request นี้จะใช้ `PUBLIC_URL/voice` เป็น TwiML URL
 
-## Permanent deployment
+## การ Deploy แบบถาวร
 
-1. Deploy the repository to a Node.js 18+ service that supports long-lived HTTP and WebSocket connections.
-2. Set the start command to `npm start` (or `npm run start:production`).
-3. Add all required environment variables in the platform's secret manager. Do not upload `.env`.
-4. Let the platform provide `PORT`; the server binds to `0.0.0.0`.
-5. Set `PUBLIC_URL` to the stable public HTTPS service URL.
-6. In Twilio, set the phone number's incoming voice webhook to `POST <PUBLIC_URL>/voice`.
-7. Verify `GET <PUBLIC_URL>/health` returns JSON with `status: "ok"`.
-8. Place a controlled inbound test call, then verify the Telegram summary and optional webhook.
-9. For outbound calls, call `POST <PUBLIC_URL>/call` with the destination number and confirm the configured Twilio caller ID.
+1. Deploy repository ไปยังบริการ Node.js 18+ ที่รองรับการเชื่อมต่อ HTTP และ WebSocket ระยะยาว
+2. ตั้งค่า start command เป็น `npm start` (หรือ `npm run start:production`)
+3. เพิ่มตัวแปรสภาพแวดล้อมที่จำเป็นทั้งหมดใน secret manager ของแพลตฟอร์ม ห้ามอัปโหลดไฟล์ `.env`
+4. ให้แพลตฟอร์มเป็นผู้กำหนดค่า `PORT` เอง เซิร์ฟเวอร์จะ bind กับ `0.0.0.0`
+5. ตั้งค่า `PUBLIC_URL` เป็น URL บริการสาธารณะแบบ HTTPS ที่มั่นคง
+6. ใน Twilio ให้ตั้งค่า incoming voice webhook ของหมายเลขโทรศัพท์เป็น `POST <PUBLIC_URL>/voice`
+7. ตรวจสอบว่า `GET <PUBLIC_URL>/health` คืนค่า JSON ที่มี `status: "ok"`
+8. ทดสอบโทรเข้าแบบควบคุมได้ จากนั้นตรวจสอบสรุปที่ส่งไปยัง Telegram และ webhook เสริม (ถ้ามี)
+9. สำหรับสายโทรออก ให้เรียก `POST <PUBLIC_URL>/call` พร้อมหมายเลขปลายทาง แล้วตรวจสอบ caller ID ของ Twilio ที่ตั้งค่าไว้
 
-Use a host with WebSocket support and a process manager or managed service that restarts the process after failure. The current in-memory call state is suitable for a single running instance; a multi-instance deployment would require shared call/session state before scaling horizontally.
+ใช้ host ที่รองรับ WebSocket และมี process manager หรือ managed service ที่รีสตาร์ทโพรเซสอัตโนมัติเมื่อเกิดความล้มเหลว สถานะการโทรที่เก็บในหน่วยความจำปัจจุบันเหมาะสำหรับการรันบน instance เดียว หากต้องการขยายไปหลาย instance จะต้องมีการแชร์สถานะการโทร/เซสชันร่วมกันก่อน
 
-## Inbound and outbound call flow
+## ขั้นตอนการโทรเข้าและโทรออก
 
-### Inbound
+### โทรเข้า (Inbound)
 
-1. Twilio sends `POST /voice`.
-2. The server returns the existing Russian greeting TwiML and connects Twilio to `/media`.
-3. Audio is streamed to Deepgram.
-4. Final Thai or Russian utterances are grouped, detected, sent to OpenAI with the current call memory, and converted to phone audio by ElevenLabs in the same language.
-5. The audio is sent back over the Twilio stream.
-6. On stream stop or close, the transcript is summarized, translated, and delivered.
+1. Twilio ส่ง `POST /voice`
+2. เซิร์ฟเวอร์ส่งคำทักทายภาษารัสเซียแบบ TwiML กลับไป และเชื่อมต่อ Twilio เข้ากับ `/media`
+3. เสียงจะถูกสตรีมไปยัง Deepgram
+4. ประโยคสุดท้ายที่เป็นภาษาไทยหรือรัสเซียจะถูกจัดกลุ่ม ตรวจจับภาษา ส่งไปยัง OpenAI พร้อมหน่วยความจำของสายนั้น และแปลงเป็นเสียงโทรศัพท์โดย ElevenLabs ในภาษาเดียวกัน
+5. เสียงจะถูกส่งกลับผ่าน Twilio stream
+6. เมื่อ stream หยุดหรือปิด บทสนทนาจะถูกสรุป แปล และส่งออกไป
 
-### Outbound
+### โทรออก (Outbound)
 
-1. A trusted caller sends `POST /call` with `{ "to": "..." }`.
-2. The server creates a Twilio call using `TWILIO_PHONE_NUMBER` and `PUBLIC_URL/voice`.
-3. Twilio enters the same `/voice` and `/media` flow as an inbound call.
+1. ผู้โทรที่เชื่อถือได้ส่ง `POST /call` พร้อม `{ "to": "..." }`
+2. เซิร์ฟเวอร์สร้างสาย Twilio โดยใช้ `TWILIO_PHONE_NUMBER` และ `PUBLIC_URL/voice`
+3. Twilio เข้าสู่ขั้นตอน `/voice` และ `/media` เดียวกันกับสายเรียกเข้า
 
-## File audit
+## รายการไฟล์ในโปรเจกต์
 
-Confirmed production files:
+ไฟล์ที่ใช้งานจริงในระบบ production:
 
-- `twilio-server.js` - HTTP routes, Twilio WebSocket, Deepgram, OpenAI, ElevenLabs, summaries, translation, Telegram
-- `agent-brain.js` - conversation prompt construction
-- `analysis/conversation_logic.json` - generated conversation rules
-- `package.json` and `package-lock.json` - Node runtime and dependencies
+- `twilio-server.js` - HTTP routes, Twilio WebSocket, Deepgram, OpenAI, ElevenLabs, สรุปผล, แปลภาษา, Telegram
+- `agent-brain.js` - การสร้าง prompt สำหรับบทสนทนา
+- `analysis/conversation_logic.json` - กฎการสนทนาที่สร้างขึ้น
+- `package.json` และ `package-lock.json` - Node runtime และ dependencies
 
-Research or maintenance files, not runtime dependencies:
+ไฟล์สำหรับการวิจัยหรือบำรุงรักษา ไม่ใช่ dependency ของระบบ runtime:
 
-- `analyze_transcripts.py`, `batch_transcribe.py`, `combine_analysis.py` - offline transcript analysis pipeline
-- `call-data/` and `analysis/individual/` - transcript and analysis corpus used to develop the prompt
-- `checkVoices.js` - one-off ElevenLabs voice listing utility
-- `Test telegram.js` - one-off Telegram delivery test; it is not imported by the server
-- `process-record-url.txt` - source transcript/research material
-- `output.mp3` - generated local audio artifact
+- `analyze_transcripts.py`, `batch_transcribe.py`, `combine_analysis.py` - pipeline วิเคราะห์ transcript แบบ offline
+- `call-data/` และ `analysis/individual/` - คลังข้อมูล transcript และผลวิเคราะห์ที่ใช้พัฒนา prompt
+- `checkVoices.js` - เครื่องมือทดสอบแสดงรายการเสียงของ ElevenLabs (ใช้ครั้งเดียว)
+- `Test telegram.js` - ไฟล์ทดสอบการส่งข้อความ Telegram (ใช้ครั้งเดียว) ไม่ได้ถูก import โดยเซิร์ฟเวอร์
+- `process-record-url.txt` - ข้อมูล transcript/วิจัยต้นทาง
+- `output.mp3` - ไฟล์เสียงที่สร้างขึ้นในเครื่อง
 
-`server.js` is a standalone earlier OpenAI/ElevenLabs demo and is not imported by the production server. `vyada-real-estate/` is a separate, self-contained English sandbox. These files were left in place because they are not proven safe to delete and may be useful as research or demos.
+`server.js` เป็นโปรแกรมสาธิต OpenAI/ElevenLabs รุ่นก่อนหน้าแบบแยกเดี่ยว ไม่ได้ถูก import โดยเซิร์ฟเวอร์ production `vyada-real-estate/` เป็น sandbox ภาษาอังกฤษแบบแยกเดี่ยวและครบในตัวเอง ไฟล์เหล่านี้ยังคงถูกเก็บไว้เนื่องจากยังไม่ยืนยันว่าปลอดภัยที่จะลบ และอาจมีประโยชน์สำหรับการวิจัยหรือสาธิตต่อไป
 
-## Validation
+## การตรวจสอบความถูกต้อง (Validation)
 
-`npm run check` validates the production JavaScript syntax. The nested sandbox has independent commands under `vyada-real-estate/` and is not part of the production start command.
+`npm run check` ใช้ตรวจสอบไวยากรณ์ JavaScript ของ production ส่วน sandbox ที่ซ้อนอยู่มีคำสั่งของตัวเองแยกต่างหากภายใต้ `vyada-real-estate/` และไม่ได้เป็นส่วนหนึ่งของคำสั่ง start ของ production
