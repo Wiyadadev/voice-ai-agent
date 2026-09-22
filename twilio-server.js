@@ -65,6 +65,20 @@ function detectCallerLanguage(text, previousLanguage = 'ru') {
 // ===============================
 app.post('/voice', (req, res) => {
   const { CallSid, From, To } = req.body;
+  const configuredPublicUrl = process.env.PUBLIC_URL?.replace(/\/+$/, '');
+  const requestHost = req.get('host');
+  const configuredPublicHost = configuredPublicUrl
+    ? new URL(configuredPublicUrl).host
+    : null;
+  const streamHost = requestHost || configuredPublicHost;
+
+  console.log('📞 /voice requested', {
+    callSid: CallSid || null,
+    from: From || null,
+    to: To || null,
+    requestHost,
+    streamHost
+  });
 
   if (CallSid && !callMetadata.has(CallSid)) {
     callMetadata.set(CallSid, {
@@ -82,10 +96,12 @@ app.post('/voice', (req, res) => {
   );
 
   const connect = twiml.connect();
-  connect.stream({ url: `wss://${req.headers.host}/media` });
+  connect.stream({ url: `wss://${streamHost}/media` });
 
   res.type('text/xml');
-  res.send(twiml.toString());
+  const twimlXml = twiml.toString();
+  console.log('✅ /voice returned TwiML', { callSid: CallSid || null, streamUrl: `wss://${streamHost}/media` });
+  res.send(twimlXml);
 });
 
 // ===============================
@@ -534,12 +550,18 @@ async function finalizeCallOnce(callSid) {
 // ===============================
 // 🎧 WEBSOCKET — приём аудио звонка от Twilio в реальном времени
 // ===============================
-wss.on('connection', (twilioWs) => {
-  console.log('📡 Twilio подключился к медиапотоку');
+wss.on('connection', (twilioWs, request) => {
+  console.log('📡 Twilio Media Stream connected', {
+    path: request.url,
+    host: request.headers.host
+  });
 
   let streamSid;
   let callSid;
   let deepgramWs;
+  let deepgramReady = false;
+  let pendingAudioChunks = [];
+  let streamFinalized = false;
   let transcriptFlushTimer;
   let pendingTranscriptParts = [];
   let isProcessingTranscript = false;
@@ -578,27 +600,40 @@ wss.on('connection', (twilioWs) => {
       }
     }
   }
-  deepgramWs = new WebSocket(
-    'wss://api.deepgram.com/v1/listen?model=nova-2&language=multi&smart_format=true&encoding=mulaw&sample_rate=8000&endpointing=1200',
-    { headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` } }
-  );
+  function startDeepgram() {
+    if (deepgramWs) {
+      return;
+    }
 
-  deepgramWs.on('open', () => {
-    console.log('✅ Deepgram OPEN');
-});
+    deepgramWs = new WebSocket(
+      'wss://api.deepgram.com/v1/listen?model=nova-2&language=multi&smart_format=true&encoding=mulaw&sample_rate=8000&endpointing=1200',
+      { headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` } }
+    );
 
-deepgramWs.on('error', (err) => {
-    console.error('❌ Deepgram ERROR');
-    console.error(err);
-});
+    deepgramWs.on('open', () => {
+      deepgramReady = true;
+      console.log('✅ Deepgram WebSocket connected', { callSid, streamSid });
 
-deepgramWs.on('close', (code, reason) => {
-    console.log('🔴 Deepgram CLOSED');
-    console.log('Code:', code);
-    console.log('Reason:', reason.toString());
-});
+      for (const audioChunk of pendingAudioChunks) {
+        deepgramWs.send(audioChunk);
+      }
+      pendingAudioChunks = [];
+    });
 
-  deepgramWs.on('message', async (msg) => {
+    deepgramWs.on('error', (err) => {
+      console.error('❌ Deepgram WebSocket error:', err.message);
+    });
+
+    deepgramWs.on('close', (code, reason) => {
+      deepgramReady = false;
+      console.log('🔴 Deepgram WebSocket closed', {
+        callSid,
+        code,
+        reason: reason.toString()
+      });
+    });
+
+    deepgramWs.on('message', async (msg) => {
   try {
     const raw = msg.toString();
     const data = JSON.parse(raw);
@@ -633,7 +668,7 @@ deepgramWs.on('close', (code, reason) => {
 
     // ใช้เฉพาะ final transcript เหมือน logic เดิม
     if (transcript && data.is_final === true) {
-      console.log('🗣️ Собеседник сказал:', transcript);
+      console.log('🗣️ Speech received:', transcript);
 
       pendingTranscriptParts.push(transcript); 
       scheduleTranscriptFlush();
@@ -642,20 +677,48 @@ deepgramWs.on('close', (code, reason) => {
     console.error('❌ Deepgram message processing error:', error);
     console.error('Raw Deepgram message:', msg.toString());
   }
-});
+    });
+  }
+
+  function finalizeMediaStream() {
+    if (streamFinalized) {
+      return;
+    }
+
+    streamFinalized = true;
+    clearTimeout(transcriptFlushTimer);
+    pendingAudioChunks = [];
+
+    if (deepgramWs && deepgramWs.readyState === WebSocket.OPEN) {
+      deepgramWs.close();
+    }
+
+    console.log('📋 Finalizing call', { callSid, streamSid });
+    finalizeCall(callSid).catch((err) => {
+      console.error('❌ Ошибка завершения звонка:', err);
+    });
+  }
 
   twilioWs.on('message', (message) => {
-    const msg = JSON.parse(message);
+    let msg;
+    try {
+      msg = JSON.parse(message);
+    } catch (error) {
+      console.error('❌ Invalid Twilio Media Stream message:', error.message);
+      return;
+    }
 
     if (msg.event === 'start') {
       streamSid = msg.start.streamSid;
       callSid = msg.start.callSid;
-      console.log('▶️  Звонок начался, streamSid:', streamSid, 'callSid:', callSid);
+      console.log('▶️ Twilio Media Stream started', { streamSid, callSid });
 
       if (callSid) {
         conversationMemory.set(callSid, []);
         callLanguages.delete(callSid);
       }
+
+      startDeepgram();
     }
 
     if (msg.event === 'media') {
@@ -664,12 +727,14 @@ deepgramWs.on('close', (code, reason) => {
 
    
 
-    if (deepgramWs.readyState === WebSocket.OPEN) {
+    if (deepgramReady && deepgramWs.readyState === WebSocket.OPEN) {
       deepgramWs.send(audioChunk);
+    } else if (deepgramWs && pendingAudioChunks.length < 50) {
+      pendingAudioChunks.push(audioChunk);
     } else {
       console.error(
         '❌ Cannot send audio to Deepgram. WebSocket state:',
-        deepgramWs.readyState
+        deepgramWs ? deepgramWs.readyState : 'not_started'
       );
     }
   } catch (error) {
@@ -679,30 +744,19 @@ deepgramWs.on('close', (code, reason) => {
 
     if (msg.event === 'stop') {
   clearTimeout(transcriptFlushTimer);
-  console.log('⏹️  Звонок завершён');
-
-  if (deepgramWs.readyState === WebSocket.OPEN) {
-    deepgramWs.close();
-  }
-
-  finalizeCall(callSid).catch((err) => {
-    console.error('❌ Ошибка завершения звонка:', err);
-  });
+  console.log('⏹️ Twilio Media Stream stopped', { streamSid, callSid });
+  finalizeMediaStream();
 }
   });
 
   twilioWs.on('close', () => {
-  clearTimeout(transcriptFlushTimer);
-  console.log('📴 WebSocket с Twilio закрыт');
-
-  if (deepgramWs.readyState === WebSocket.OPEN) {
-    deepgramWs.close();
-  }
-
-  finalizeCall(callSid).catch((err) => {
-    console.error('❌ Ошибка завершения звонка:', err);
-  });
+  console.log('📴 Twilio Media Stream closed', { streamSid, callSid });
+  finalizeMediaStream();
 });
+
+  twilioWs.on('error', (error) => {
+    console.error('❌ Twilio Media Stream error:', error.message);
+  });
 });
 // ===============================
 // 🔁 Обработка реплики: LLM -> TTS -> отправка обратно в звонок
@@ -746,6 +800,7 @@ async function handleUserSpeech(userText, twilioWs, streamSid, callSid) {
 app.post('/call', async (req, res) => {
   try {
     const { to } = req.body;
+    console.log('📞 POST /call received', { to: to || null });
 
     if (!to) {
       return res.status(400).json({
@@ -759,7 +814,7 @@ app.post('/call', async (req, res) => {
       process.env.TWILIO_AUTH_TOKEN
     );
 
-    const publicUrl = process.env.PUBLIC_URL;
+    const publicUrl = process.env.PUBLIC_URL?.replace(/\/+$/, '');
 
     if (!publicUrl) {
       return res.status(500).json({
@@ -775,7 +830,10 @@ app.post('/call', async (req, res) => {
     method: 'POST',
     record: true
 });
-    console.log('📤 Исходящий звонок создан:', call.sid);
+    console.log('📤 Outbound call created', {
+      callSid: call.sid,
+      voiceWebhook: `${publicUrl}/voice`
+    });
 
     res.json({
       success: true,
