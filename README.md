@@ -1,6 +1,6 @@
-# Russian Voice AI Agent
+# Thai/Russian Voice AI Agent
 
-A production-oriented Russian telephone voice agent built around Twilio Media Streams. It recognizes Russian speech with Deepgram, generates concise Russian replies with OpenAI, synthesizes phone audio with ElevenLabs, and sends an after-call summary plus Thai translation to Telegram and an optional webhook.
+A production-oriented Thai/Russian telephone voice agent built around Twilio Media Streams. It recognizes Thai and Russian speech with Deepgram, generates concise replies in the caller's current language with OpenAI, synthesizes phone audio with ElevenLabs, and sends an after-call summary plus Thai translation to Telegram and an optional webhook.
 
 ## Architecture
 
@@ -8,9 +8,10 @@ A production-oriented Russian telephone voice agent built around Twilio Media St
 Twilio call
   -> POST /voice (TwiML greeting + wss://<host>/media)
   -> WebSocket /media
-  -> Deepgram Nova-2, Russian, mu-law 8 kHz
+  -> Deepgram Nova-2 multilingual, mu-law 8 kHz
+  -> Thai/Russian detection per caller utterance
   -> OpenAI Chat Completions with per-call conversation memory
-  -> ElevenLabs multilingual TTS, mu-law 8 kHz
+  -> ElevenLabs multilingual TTS with a language hint, mu-law 8 kHz
   -> Twilio audio stream
 
 Call stop/close
@@ -28,8 +29,8 @@ Complete and wired in the production path:
 
 - Twilio inbound voice webhook and outbound call creation
 - Twilio bidirectional media WebSocket
-- Russian Deepgram speech recognition
-- Russian OpenAI conversation with per-call context
+- Thai and Russian Deepgram speech recognition
+- Thai/Russian OpenAI conversation with per-call context
 - ElevenLabs phone-compatible mu-law audio
 - Call finalization protection against duplicate `stop`/`close` handling
 - OpenAI call summary and Thai translation
@@ -38,7 +39,17 @@ Complete and wired in the production path:
 - `/health` endpoint for deployment health checks
 - Configurable `PORT` for hosted platforms
 
-The project also contains a separate `vyada-real-estate/` English sandbox with its own package, server, browser UI, and tests. It is not imported by or required for the Russian Twilio agent.
+The project also contains a separate `vyada-real-estate/` English sandbox with its own package, server, browser UI, and tests. It is not imported by or required for this Twilio agent.
+
+## Language detection and switching
+
+Deepgram uses its multilingual streaming mode (`language=multi`) so the audio stream is not locked to Russian. For each final transcript, the server counts Thai characters and Cyrillic characters:
+
+- Thai characters win: the utterance is treated as Thai (`th`).
+- Cyrillic characters win: the utterance is treated as Russian (`ru`).
+- If the transcript has neither script, the previous language for that Call SID is retained.
+
+The detected language is passed to OpenAI as the current reply language and to ElevenLabs as `language_code`. This runs independently for every utterance, so a caller can switch between Thai and Russian during one call. The conversation memory remains shared, preserving context across the switch.
 
 ## Required environment variables
 
@@ -108,9 +119,9 @@ Use a host with WebSocket support and a process manager or managed service that 
 ### Inbound
 
 1. Twilio sends `POST /voice`.
-2. The server returns Russian greeting TwiML and connects Twilio to `/media`.
+2. The server returns the existing Russian greeting TwiML and connects Twilio to `/media`.
 3. Audio is streamed to Deepgram.
-4. Final Russian utterances are grouped, sent to OpenAI with the current call memory, and converted to phone audio by ElevenLabs.
+4. Final Thai or Russian utterances are grouped, detected, sent to OpenAI with the current call memory, and converted to phone audio by ElevenLabs in the same language.
 5. The audio is sent back over the Twilio stream.
 6. On stream stop or close, the transcript is summarized, translated, and delivered.
 

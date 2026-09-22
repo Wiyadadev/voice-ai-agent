@@ -43,6 +43,22 @@ const VOICE_ID = 'nPczCjzI2devNBz1zQrb'; // тот же голос, что уж�
 const conversationMemory = new Map(); // память диалога по CallSid
 const callMetadata = new Map(); // { from, to, startedAt } по CallSid, нужно для вебхука сводки
 const callFinalizationPromises = new Map(); // защита от повторного вызова finalizeCall для одного и того же callSid
+const callLanguages = new Map(); // последний определённый язык по CallSid
+
+function detectCallerLanguage(text, previousLanguage = 'ru') {
+  const thaiCharacters = (text.match(/[\u0E00-\u0E7F]/g) || []).length;
+  const russianCharacters = (text.match(/[А-Яа-яЁё]/g) || []).length;
+
+  if (thaiCharacters > russianCharacters && thaiCharacters > 0) {
+    return 'th';
+  }
+
+  if (russianCharacters > 0) {
+    return 'ru';
+  }
+
+  return previousLanguage;
+}
 
 // ===============================
 // 📞 TWIML — ответ на входящий звонок
@@ -75,15 +91,20 @@ app.post('/voice', (req, res) => {
 // ===============================
 // 🤖 AI RESPONSE (тот же код, что в server.js)
 // ===============================
-async function getLLMResponse(userText, callSid) {
+async function getLLMResponse(userText, callSid, language) {
   const memory = conversationMemory.get(callSid) || [];
+  const languageName = language === 'th' ? 'Thai' : 'Russian';
 
   const messages = [
     {
       role: 'system',
-    content: `Ты профессиональный русскоязычный голосовой AI-ассистент, ведущий разговор по телефону.
+    content: `You are a professional bilingual telephone AI assistant speaking Russian and Thai.
 
-Говори только на естественном разговорном русском языке.
+The caller's current language is ${languageName}. Reply only in ${languageName} unless the caller switches language. If the caller switches between Russian and Thai, switch immediately and naturally on the next reply. Never translate the reply unless the caller asks.
+
+Russian replies must be natural spoken Russian. Thai replies must be natural spoken Thai, using polite and conversational wording appropriate for a phone call.
+
+Keep replies brief, usually one or two short sentences. Speak like a natural phone conversation, not a text chatbot.
 
 Правила речи:
 - Отвечай кратко, обычно 1–2 короткими предложениями.
@@ -102,9 +123,9 @@ async function getLLMResponse(userText, callSid) {
 - Если клиент перебивает или меняет тему, естественно отреагируй на последнее сказанное.
 - Если клиент хочет закончить разговор, не удерживай его и заверши разговор естественно.
 
-Текст клиента получен через телефонное распознавание речи и может содержать ошибки. Если смысл достаточно понятен, отвечай по смыслу. Если смысл действительно неясен, задай один короткий уточняющий вопрос.
+The caller's speech comes from telephone speech recognition and may contain errors. If the meaning is clear enough, respond to the meaning. If it is genuinely unclear, ask one short clarification question in the caller's current language.
 
-Твоя цель — вести естественный, краткий и связный телефонный разговор, который звучит как настоящий диалог, а не как чтение текста роботом.`
+Keep the conversation natural, brief, coherent, and suitable for speech synthesis. Do not use lists, headings, Markdown, or internal analysis.`
   },
   ...memory,
   { role: 'user', content: userText }
@@ -135,9 +156,9 @@ async function getLLMResponse(userText, callSid) {
 // ===============================
 // 🔊 ELEVENLABS TTS — версия для телефона (mulaw 8000Hz)
 // ===============================
-async function textToSpeechForCall(text) {
+async function textToSpeechForCall(text, language) {
   const response = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=ulaw_8000`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=ulaw_8000&language_code=${language}`,
     {
       method: 'POST',
       headers: {
@@ -469,6 +490,7 @@ async function finalizeCallOnce(callSid) {
   if (!memory || memory.length === 0) {
     conversationMemory.delete(callSid);
     callMetadata.delete(callSid);
+    callLanguages.delete(callSid);
     return;
   }
 
@@ -505,6 +527,7 @@ async function finalizeCallOnce(callSid) {
   } finally {
     conversationMemory.delete(callSid);
     callMetadata.delete(callSid);
+    callLanguages.delete(callSid);
   }
 }
 
@@ -556,7 +579,7 @@ wss.on('connection', (twilioWs) => {
     }
   }
   deepgramWs = new WebSocket(
-    'wss://api.deepgram.com/v1/listen?model=nova-2&language=ru&smart_format=true&encoding=mulaw&sample_rate=8000&endpointing=1200',
+    'wss://api.deepgram.com/v1/listen?model=nova-2&language=multi&smart_format=true&encoding=mulaw&sample_rate=8000&endpointing=1200',
     { headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}` } }
   );
 
@@ -631,6 +654,7 @@ deepgramWs.on('close', (code, reason) => {
 
       if (callSid) {
         conversationMemory.set(callSid, []);
+        callLanguages.delete(callSid);
       }
     }
 
@@ -685,7 +709,13 @@ deepgramWs.on('close', (code, reason) => {
 // ===============================
 async function handleUserSpeech(userText, twilioWs, streamSid, callSid) {
   try {
-    const aiText = await getLLMResponse(userText, callSid);
+    const language = detectCallerLanguage(
+      userText,
+      callLanguages.get(callSid) || 'ru'
+    );
+    callLanguages.set(callSid, language);
+
+    const aiText = await getLLMResponse(userText, callSid, language);
     console.log('🤖 ИИ отвечает:', aiText);
 
     if (callSid) {
@@ -696,7 +726,7 @@ async function handleUserSpeech(userText, twilioWs, streamSid, callSid) {
       }
     }
 
-    const audioBuffer = await textToSpeechForCall(aiText);
+    const audioBuffer = await textToSpeechForCall(aiText, language);
     const audioBase64 = audioBuffer.toString('base64');
 
     twilioWs.send(JSON.stringify({
