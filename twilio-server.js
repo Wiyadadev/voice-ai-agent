@@ -70,7 +70,7 @@ app.post('/voice', (req, res) => {
   const configuredPublicHost = configuredPublicUrl
     ? new URL(configuredPublicUrl).host
     : null;
-  const streamHost = requestHost || configuredPublicHost;
+  const streamHost = configuredPublicHost || requestHost;
 
   console.log('📞 /voice requested', {
     callSid: CallSid || null,
