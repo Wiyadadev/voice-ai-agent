@@ -744,13 +744,24 @@ wss.on('connection', (twilioWs, request) => {
 
     if (msg.event === 'stop') {
   clearTimeout(transcriptFlushTimer);
-  console.log('⏹️ Twilio Media Stream stopped', { streamSid, callSid });
+  console.log('⏹️ Twilio Media Stream stopped', {
+    timestamp: new Date().toISOString(),
+    streamSid: msg.stop?.streamSid || streamSid || null,
+    callSid: msg.stop?.callSid || callSid || null,
+    stopPayload: msg
+  });
   finalizeMediaStream();
 }
   });
 
-  twilioWs.on('close', () => {
-  console.log('📴 Twilio Media Stream closed', { streamSid, callSid });
+  twilioWs.on('close', (code, reason) => {
+  console.log('📴 Twilio Media Stream closed', {
+    timestamp: new Date().toISOString(),
+    streamSid: streamSid || null,
+    callSid: callSid || null,
+    code,
+    reason: reason.toString()
+  });
   finalizeMediaStream();
 });
 
